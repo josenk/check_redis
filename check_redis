@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+
+
+import redis
+import sys
+from optparse import OptionParser
+
+
+exit_ok = 0
+exit_warn = 1
+exit_crit = 2
+
+
+def build_parser():
+    parser = OptionParser()
+    parser.add_option("-H", "--host", dest="host", help="Redis host", default="127.0.0.1")
+    parser.add_option("-p", "--port", dest="port", help="Redis port", type="int", default=6379)
+    parser.add_option("-w", "--warn", dest="warn_mem", help="Memory usage (in bytes) that triggers a warning status.", type="int")
+    parser.add_option("-c", "--crit", dest="crit_mem", help="Memory usage (in bytes) that triggers a warning status.", type="int")
+    parser.add_option("-W", "--warnpct", dest="warn_mem_pct", help="Memory usage in Percentage that triggers a warning status. (default=80)", type="int", default=80)
+    parser.add_option("-C", "--critpct", dest="crit_mem_pct", help="Memory usage in Percentage that triggers a critical status. (default=90)", type="int", default=90)
+    return parser
+
+
+def main():
+    code = "OK"
+    parser = build_parser()
+    options, _args = parser.parse_args()
+
+    try:
+        r = redis.Redis(host=options.host, port=options.port)
+        info = r.info()
+    except:
+        print("CRITICAL: Error connecting to redis %s:%s: %s" % (options.host, options.port, sys.exc_info()[1]))
+        sys.exit(exit_crit)
+
+
+    #  Calculate memory and perf data
+    memory = int(info.get("used_memory_rss") or info["used_memory"])
+    used_pct = memory / int(info['maxmemory']) * 100
+    keys = len(r.info('Keyspace'))
+    hit_ratio = int(info.get("keyspace_hits")) / (int(info.get("keyspace_hits")) + int(info.get("keyspace_misses"))) * 100
+
+    perfData = "used_memory_pct=%d,used_memory_rss=%d,keys=%d,connected_clients=%d,instantaneous_ops_per_sec=%d,keyspace_hit_ratio=%d" % (used_pct, memory / (1024 * 1024), keys,int(info.get("connected_clients")),int(info.get("instantaneous_ops_per_sec")), hit_ratio)
+
+
+    #  Percent usage monitoring can only work if maxmemory is set.
+    if int(info["maxmemory"]) == 0:
+        if not options.warn_mem:
+            parser.error("Warning level required when maxmemory=0")
+            sys.exit(exit_crit)
+        if not options.crit_mem:
+            parser.error("Critical level required when maxmemory=0")
+            sys.exit(exit_crit)
+
+    #  Check based on static values or percent
+    if options.warn_mem or options.crit_mem:
+        units = "MB"
+
+        used = memory / (1024 * 1024)
+        if used > int(options.crit_mem):
+            code = "CRITICAL"
+        elif used > int(options.warn_mem):
+            code = "WARN"
+    else:
+        units = "%"
+
+        used = used_pct
+        if used > int(options.crit_mem_pct):
+            code = "CRITICAL"
+        elif used > int(options.warn_mem_pct):
+            code = "WARN"
+
+
+    #  Print results
+    print("check_redis %s - Memory usage = %d%s | %s" % (code, used, units, perfData))
+    if code == "OK":
+        sys.exit(exit_ok)
+    elif code == "WARN":
+        sys.exit(exit_warn)
+    else:
+        sys.exit(exit_crit)
+
+if __name__ == "__main__":
+    main()
