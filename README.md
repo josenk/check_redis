@@ -1,6 +1,6 @@
 Nagios check_redis script
 =========================
-This is a Nagios check script for redis written in python3.  There are command line arguments for a static memory usage value in MB OR memory usage percent.  Memory usage percent requires that you have `maxmemory` set in redis.conf.
+This is a Nagios check script for redis written in python3.  There are command line arguments for a static memory usage value in MB OR memory usage percent.  Memory usage percent requires that you have `maxmemory` set in redis.conf.  Some performance data is printed in the output.
 
 Installation requirements
 -------------------------
@@ -28,6 +28,11 @@ Command line arguments
   * You may want to raise these defaults, or use static values if you are evicting.
   * These options are NOT compatible with -w / -c
 
+Example output
+--------------
+```
+check_redis OK - Memory usage = 43% | used_memory_pct=43,used_memory_rss=80,keys=2,connected_clients=6,instantaneous_ops_per_sec=12,keyspace_hit_ratio=90
+```
 
 TO-DO
 -----
